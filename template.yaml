@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Plantilla de CloudFormation para una Web Estática con S3 y CloudFront.
+  Despliega un bucket S3 privado y una distribución CloudFront con OAC.
+
+
+Resources:
+  # --- 1. El "Almacén" donde vivirá nuestra web (S3 Bucket) ---
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub web-estatica-${AWS::AccountId}-${AWS::Region}
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+
+  # --- 2. El "Permiso" para que CloudFront pueda leer el almacén (Bucket Policy) ---
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalGetObject
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${WebsiteBucket}/*
+            Condition:
+              StringEquals:
+                # Corregido: Referencia correcta a la Distribution ID generada por CloudFront
+                "AWS:SourceArn": !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
+
+  # --- 3. El "Guardia de Seguridad" de CloudFront (Origin Access Control) ---
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub OAC-${WebsiteBucket}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+
+  # --- 4. El "Repartidor" Global y Seguro (CloudFront Distribution) ---
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: "Distribucion para la web estatica"
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt WebsiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig: {} # No necesitamos configuración extra aquí con OAC
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https # Forzamos HTTPS
+          Compress: true
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized PolicyId
+          # Se eliminan CachePolicyId y OriginRequestPolicyId y se usan valores estándar
+          ForwardedValues:
+            QueryString: false # No reenviar parámetros de consulta al origen (S3)
+            Cookies:
+              Forward: none # No reenviar cookies
+          MinTTL: 0
+          DefaultTTL: 86400 # Cachear por un día por defecto
+          MaxTTL: 31536000 # Cachear hasta por un año
+
+
+Outputs:
+  WebsiteURL:
+    Description: "URL de la web distribuida por CloudFront"
+    Value: !Sub https://${CloudFrontDistribution.DomainName}
+  S3BucketName:
+    Description: "Nombre del S3 Bucket donde subir el contenido"
+    Value: !Ref WebsiteBucket
