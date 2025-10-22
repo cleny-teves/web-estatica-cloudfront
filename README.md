@@ -6,7 +6,7 @@ Este repositorio contiene la plantilla de Infraestructura como Código (IaC) y e
 
 La arquitectura implementada sigue las mejores prácticas de seguridad, utilizando un bucket S3 privado y Amazon CloudFront con Origin Access Control (OAC) para la entrega de contenido.
 
-![Arquitectura Web Estática](arquitectura-web-estatica)
+![Arquitectura Web Estática](arquitectura-web-estatica.png)
 
 1. El lector solicita el sitio web en www.example.com.
 2. Si el objeto solicitado está en caché, CloudFront devuelve el objeto de su caché al lector.
